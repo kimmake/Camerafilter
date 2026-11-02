@@ -172,7 +172,7 @@ function updateFilterUI() {
 }
 const sample = new Image(); let sampleReady = false;
 sample.onload = () => { sampleReady = true; if (galleryOpen) renderHero(); };
-sample.src = 'assets/sample.svg';
+sample.src = 'assets/sample.jpg';
 const heroNoise = (() => { try { return makeNoise(); } catch (e) { return null; } })();
 function renderHero(animate) {
   if (!sampleReady) return;

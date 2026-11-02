@@ -1,6 +1,6 @@
-const CACHE = 'film-lab-v3';
+const CACHE = 'film-lab-v4';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
-  './assets/cam-classic.svg', './assets/cam-golden.svg', './assets/cam-cool.svg', './assets/cam-faded.svg', './assets/cam-mono.svg', './assets/sample.svg'];
+  './assets/cam-classic.svg', './assets/cam-golden.svg', './assets/cam-cool.svg', './assets/cam-faded.svg', './assets/cam-mono.svg', './assets/sample.jpg'];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())));
 // 이전 버전 캐시를 지우고 열려 있는 페이지를 바로 인계받는다
