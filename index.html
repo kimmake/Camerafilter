@@ -14,8 +14,9 @@
 <title>FILM LAB — Vintage Camera</title>
 </head>
 <body>
-<main class="app" id="app">
 
+<!-- 1. Camera -->
+<main class="app" id="app">
   <section class="viewfinder" id="viewfinder">
     <video id="video" autoplay muted playsinline></video>
     <canvas id="preview"></canvas>
@@ -27,14 +28,18 @@
       <i class="focus"></i>
     </div>
 
-    <button class="filter-tag" id="filterTag" type="button" aria-label="필름 선택">
-      <span id="filterLabel">CLASSIC FILM</span><em id="strengthTag">80%</em>
+    <button class="filter-tag" id="filterTag" type="button" aria-label="필름 갤러리 열기">
+      <span id="filterLabel">CLASSIC 95</span><em id="strengthTag">80%</em>
     </button>
 
-    <div class="vf-bottom">
+    <div class="zoom-pills" id="zoom" role="group" aria-label="줌">
+      <button type="button" data-z="1" class="on">1x</button>
+      <button type="button" data-z="2">2x</button>
+      <span id="zoomKind" hidden>DIGITAL</span>
+    </div>
+    <div class="vf-right">
       <span class="stamp" id="dateLabel"></span>
       <button type="button" class="toggle" id="dateToggle" aria-pressed="true">날짜 <b>ON</b></button>
-      <button type="button" class="toggle" id="grainToggle" aria-pressed="true">필름 입자 <b>ON</b></button>
     </div>
 
     <div class="flash-fx" id="flashFx"></div>
@@ -45,21 +50,12 @@
       <strong>FILM LAB</strong>
       <p>카메라 권한을 허용하면<br>빈티지 필름 촬영을 시작할 수 있어요.</p>
       <button class="start" id="start" type="button">카메라 시작하기</button>
-      <small id="emptyHint"></small>
+      <small id="emptyHint" role="alert"></small>
     </div>
   </section>
 
   <section class="panel">
-    <div class="zoom" id="zoom" role="group" aria-label="줌">
-      <div class="zoom-read"><b id="zoomLabel">1x</b><span id="zoomKind">WIDE</span></div>
-      <div class="ruler">
-        <button type="button" data-z="1" class="tick major"><i></i><span>1x</span></button>
-        <button type="button" data-z="1.25" class="tick" aria-label="1.25x"><i></i></button>
-        <button type="button" data-z="1.5" class="tick" aria-label="1.5x"><i></i></button>
-        <button type="button" data-z="1.75" class="tick" aria-label="1.75x"><i></i></button>
-        <button type="button" data-z="2" class="tick major"><i></i><span>2x</span></button>
-      </div>
-    </div>
+    <div class="strip" id="strip" role="listbox" aria-label="필름 선택. 좌우로 스와이프"></div>
 
     <div class="tray" id="tray" hidden>
       <div class="tray-row" id="trayMore" hidden>
@@ -72,11 +68,15 @@
         <input type="range" id="exposure" min="-2" max="2" step="0.5" value="0">
         <output id="exposureValue">0.0 EV</output>
       </div>
+      <div class="tray-row" id="trayGrain" hidden>
+        <label>필름 입자</label>
+        <button type="button" class="toggle wide" id="grainToggle" aria-pressed="true"><b>ON</b></button>
+      </div>
     </div>
 
     <div class="tools">
-      <button type="button" class="tool" id="moreBtn" aria-label="설정" aria-expanded="false">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+      <button type="button" class="tool" id="moreBtn" aria-label="필터 강도 · 설정" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
       </button>
       <button type="button" class="tool" id="flashBtn" aria-label="플래시" aria-pressed="false">
         <svg viewBox="0 0 24 24"><path d="M13 2 5 13.5h6L10 22l8-11.5h-6z"/></svg>
@@ -84,34 +84,38 @@
       <button type="button" class="tool" id="expBtn" aria-label="노출" aria-expanded="false">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg>
       </button>
+      <button type="button" class="tool" id="grainBtn" aria-label="필름 입자" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><circle cx="6" cy="7" r=".8"/><circle cx="12" cy="5" r=".8"/><circle cx="18" cy="8" r=".8"/><circle cx="9" cy="12" r=".8"/><circle cx="15" cy="13" r=".8"/><circle cx="5" cy="17" r=".8"/><circle cx="12" cy="18" r=".8"/><circle cx="19" cy="18" r=".8"/></svg>
+      </button>
       <button type="button" class="tool" id="switch" aria-label="카메라 전환">
         <svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.2-1.8h5L15.7 6h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><path d="M9.2 12.3a3 3 0 0 1 5.2-1.4M14.8 12.7a3 3 0 0 1-5.2 1.4M14.6 8.9v2h-2M9.4 16.1v-2h2"/></svg>
       </button>
     </div>
 
     <div class="status" id="status" role="status" aria-live="polite"></div>
+    <button type="button" class="update" id="updateBtn" hidden>새 버전이 적용됐어요 · 눌러서 새로고침</button>
 
     <div class="shutter-row">
       <button type="button" class="thumb" id="thumb" aria-label="최근 사진 보기"><img id="thumbImg" alt="" hidden></button>
       <button type="button" class="shutter" id="shutter" aria-label="사진 촬영" disabled></button>
-      <button type="button" class="cam-pick" id="camPick" aria-label="필름 카메라 선택"><img id="camPickImg" src="assets/cam-classic.svg" alt=""></button>
+      <button type="button" class="cam-pick" id="camPick" aria-label="필름 갤러리 열기"><img id="camPickImg" src="assets/cam-classic.svg" alt=""></button>
     </div>
   </section>
 </main>
 
-<section class="gallery" id="gallery" aria-hidden="true" aria-label="필름 선택">
-  <p class="gal-tag">빛과 색을 담는 다섯 개의 필름</p>
-  <div class="hero" id="hero">
-    <img class="hero-photo" id="heroPhoto" src="assets/sample.svg" alt="필터 샘플 사진">
+<!-- 2. Film Gallery -->
+<section class="gallery" id="gallery" aria-hidden="true" aria-label="필름 갤러리">
+  <p class="gal-tag">FILM GALLERY · 다섯 개의 필름</p>
+  <div class="hero">
+    <canvas id="heroCanvas" width="450" height="600" role="img" aria-label="필터가 적용된 샘플 사진"></canvas>
     <div class="hero-shade"></div>
-    <img class="hero-cam" id="heroCam" src="assets/cam-classic.svg" alt="">
-    <div class="hero-text">
-      <strong id="heroName">Classic Film</strong>
-      <span id="heroSub"></span>
-      <p id="heroDesc"></p>
-    </div>
   </div>
-  <div class="grid" id="grid" role="listbox" aria-label="필름 목록"></div>
+  <div class="hero-text" id="heroText">
+    <span id="heroSub"></span>
+    <strong id="heroName">Classic 95</strong>
+    <p id="heroDesc"></p>
+  </div>
+  <div class="grid" id="grid" role="listbox" aria-label="필름 카메라 목록"></div>
   <div class="gal-bar">
     <button type="button" class="back" id="backBtn">
       <svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.2-1.8h5L15.7 6h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.2"/></svg>
@@ -120,17 +124,17 @@
   </div>
 </section>
 
-<div class="modal" id="modal" aria-hidden="true">
-  <div class="modal-inner">
-    <img id="shot" alt="촬영된 사진">
-    <div class="modal-actions">
-      <button type="button" class="btn primary" id="share">사진 공유 / 저장</button>
-      <a class="btn" id="download" download="film-lab.jpg">파일 다운로드</a>
-      <button type="button" class="btn" id="close">닫기</button>
-    </div>
-    <p>아이폰은 ‘사진 공유 / 저장’ → ‘이미지 저장’을 선택하세요.</p>
+<!-- 3. Photo Preview -->
+<section class="pv" id="pv" aria-hidden="true" aria-label="사진 미리보기">
+  <p class="pv-meta" id="pvMeta"></p>
+  <div class="pv-photo"><img id="shot" alt="촬영된 사진"></div>
+  <div class="pv-actions">
+    <button type="button" class="btn" id="retake">재촬영</button>
+    <button type="button" class="btn primary" id="save">사진 저장</button>
+    <button type="button" class="btn" id="share">공유</button>
   </div>
-</div>
+  <p class="pv-note" id="pvNote">사진은 이 기기에서만 처리되며 서버로 업로드되지 않아요.</p>
+</section>
 
 <script src="app.js"></script>
 </body>

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" role="img" aria-label="샘플 사진: 해 질 녘 거리를 걷는 두 사람">
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" role="img" aria-label="샘플 사진: 해 질 녘 거리를 걷는 두 사람">
 <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c93ab"/><stop offset=".55" stop-color="#d9c3a6"/><stop offset="1" stop-color="#e8b98a"/></linearGradient>
 <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d6a68"/><stop offset="1" stop-color="#3b3a3a"/></linearGradient></defs>
 <rect width="600" height="800" fill="url(#sky)"/><circle cx="410" cy="300" r="62" fill="#fff1d0" opacity=".9"/>
