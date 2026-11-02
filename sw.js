@@ -1,4 +1,4 @@
-const CACHE = 'film-lab-v4';
+const CACHE = 'film-lab-v6';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './assets/cam-classic.svg', './assets/cam-golden.svg', './assets/cam-cool.svg', './assets/cam-faded.svg', './assets/cam-mono.svg', './assets/sample.jpg'];
 

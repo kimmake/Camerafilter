@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const video = $('video'), canvas = $('preview');
+const video = $('video'); let canvas = $('preview');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const store = {
@@ -33,7 +33,7 @@ const state = {
 };
 let stream = null, track = null, torchOK = false, running = false, raf = 0, busy = false;
 let lastBlob = null, lastUrl = null, lastMeta = '', galleryOpen = false, previewOpen = false;
-let quality = 1, ema = 12;          // 미리보기 해상도 배율(성능에 따라 자동 조절)
+let quality = 1;                    // 미리보기 해상도 배율(성능에 따라 자동 조절)
 
 /* ---------- 필터 엔진 ---------- */
 function filterParams(i = state.selected, t = state.strength / 100, ev = state.ev) {
@@ -98,19 +98,93 @@ function drawVideo(c, w, h) {
   return true;
 }
 
-function render() {
+/* ---------- WebGL 렌더러: 같은 필터 행렬을 GPU에서 처리 (iOS에서도 전 해상도·실시간) ---------- */
+const VS = 'attribute vec2 p;uniform vec4 crop;uniform float mir;varying vec2 t;void main(){vec2 u=p*.5+.5;u.y=1.-u.y;if(mir>.5)u.x=1.-u.x;t=crop.xy+u*crop.zw;gl_Position=vec4(p,0.,1.);}';
+// 필터 행렬 → 페이드 → 그레인(overlay) → 비네팅 순서. 촬영본과 미리보기가 같은 셰이더를 쓴다.
+const FS = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n' +
+  'uniform sampler2D tx;uniform sampler2D nz;uniform mat3 m;uniform vec3 off;uniform vec4 fade;uniform vec2 res;uniform vec4 gr;uniform float vig;varying vec2 t;' +
+  'void main(){vec3 c=m*texture2D(tx,t).rgb+off;c=clamp(c,0.,1.);c=mix(c,fade.rgb,fade.a);' +
+  'if(gr.z>0.){float n=texture2D(nz,fract(gl_FragCoord.xy/(160.*gr.w)+gr.xy)).r;vec3 o=mix(2.*c*n,1.-2.*(1.-c)*(1.-n),step(.5,c));c=mix(c,o,gr.z);}' +
+  'float d=length(gl_FragCoord.xy-res*.5)/(length(res)*.5);c*=1.-vig*clamp((d-.55)/.45,0.,1.);gl_FragColor=vec4(c,1.);}';
+const NOISE = (() => { try { return makeNoise(); } catch (e) { return null; } })();
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+function makeGLR(cv) {
+  if (/[?&]nogl\b/.test(location.search)) return null;
+  try {
+    const gl = cv.getContext('webgl', { alpha: false, antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: false });
+    if (!gl) return null;
+    const sh = (type, src) => { const x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error('shader'); return x; };
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error('link');
+    gl.useProgram(pr);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const a = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+    const setup = (unit, filter) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); };
+    setup(1, gl.NEAREST); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, NOISE);   // 그레인 텍스처(유닛 1)
+    setup(0, gl.LINEAR);
+    const U = n => gl.getUniformLocation(pr, n);
+    const u = { crop: U('crop'), mir: U('mir'), m: U('m'), off: U('off'), fade: U('fade'), res: U('res'), gr: U('gr'), vig: U('vig') };
+    gl.uniform1i(U('tx'), 0); gl.uniform1i(U('nz'), 1);
+    return {
+      max: Math.min(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096, gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096),
+      draw(src, w, h, crop, mirror, fx) {
+        if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+        gl.viewport(0, 0, w, h); gl.activeTexture(gl.TEXTURE0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src);
+        const m = filterMatrix(filterParams()), f = FILTERS[state.selected].fade, col = hexRGB(f[0]);
+        gl.uniformMatrix3fv(u.m, false, [m[0][0], m[1][0], m[2][0], m[0][1], m[1][1], m[2][1], m[0][2], m[1][2], m[2][2]]);
+        gl.uniform3f(u.off, m[0][3], m[1][3], m[2][3]);
+        gl.uniform4f(u.fade, col[0], col[1], col[2], f[1] * state.strength / 100);
+        gl.uniform4f(u.crop, crop[0], crop[1], crop[2], crop[3]); gl.uniform1f(u.mir, mirror ? 1 : 0);
+        gl.uniform2f(u.res, w, h); gl.uniform1f(u.vig, fx.vig);
+        gl.uniform4f(u.gr, Math.random(), Math.random(), fx.grain, fx.gs);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+    };
+  } catch (e) { return null; }
+}
+const fxFor = (grainScale) => { const f = FILTERS[state.selected]; return { grain: state.grain ? f.grain : 0, vig: f.vig, gs: grainScale }; };
+// 뷰파인더 비율(w×h)에 맞춰 영상을 cover + 디지털 줌으로 자르는 정규화 좌표
+function cropFor(w, h) {
+  const vw = video.videoWidth, vh = video.videoHeight, scale = Math.max(w / vw, h / vh) * state.zoom;
+  const sw = w / scale / vw, sh = h / scale / vh; return [(1 - sw) / 2, (1 - sh) / 2, sw, sh];
+}
+let glr = makeGLR(canvas);
+if (!glr) { const n = canvas.cloneNode(false); canvas.replaceWith(n); canvas = n; }   // 실패한 WebGL 컨텍스트가 붙은 캔버스는 교체
+else $('viewfinder').classList.add('gl');        // 그레인·비네팅은 셰이더가 그린다 (CSS blend 레이어 제거)
+if (!glr) quality = .6;               // 픽셀 대체 경로는 낮게 시작해서 fps가 허용하면 올린다
+let capGL = null, capCv = null;
+
+// 새 비디오 프레임이 올 때만 그린다 (카메라 30fps일 때 불필요한 60fps 업로드/렌더를 절반으로 줄임). 미지원이면 rAF.
+const useVFC = () => !!(glr && video.requestVideoFrameCallback);
+function schedule() { if (useVFC()) raf = video.requestVideoFrameCallback(render); else raf = requestAnimationFrame(render); }
+function cancelLoop() { try { if (video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(raf); } catch (e) {} cancelAnimationFrame(raf); }
+const DBG = /[?&]debug\b/.test(location.search);
+const perf = { fps: 0, frames: 0, t0: 0, skipUntil: 0, lowStreak: 0 };
+// 미리보기 해상도 = (CSS 크기 × DPR × quality). GPU 경로는 DPR 그대로, 픽셀 대체 경로는 낮게 시작해 fps가 허용하면 올린다.
+const QMIN = () => glr ? .5 : .35, DPRCAP = () => glr ? 2 : 2;
+const FPS_LOW = () => useVFC() ? 17 : 22, FPS_HIGH = () => useVFC() ? 26 : 50;
+function adaptQuality() {            // 1초마다: 느리면 해상도↓, 계속 느리면 카메라 입력 해상도↓, 여유 있으면 해상도↑
+  if (performance.now() < perf.skipUntil) return;
+  if (perf.fps < FPS_LOW()) {
+    if (quality > QMIN() + .01) { quality = Math.max(QMIN(), quality * .8); perf.lowStreak = 0; }
+    else if (++perf.lowStreak >= 3) { perf.lowStreak = 0; downgradeTier(); }
+  } else { perf.lowStreak = 0; if (perf.fps > FPS_HIGH() && quality < 1) quality = Math.min(1, quality * 1.12); }
+}
+function render(now) {
   if (!running || galleryOpen || previewOpen) return;
-  const t0 = performance.now();
-  const dpr = Math.min(devicePixelRatio || 1, CSS_FILTER ? 2 : 1) * quality;
+  now = now || performance.now();
+  if (now - perf.t0 >= 1000) { perf.fps = perf.frames * 1000 / (now - perf.t0); perf.frames = 0; perf.t0 = now; adaptQuality(); }
+  perf.frames++;
+  const dpr = Math.min(devicePixelRatio || 1, DPRCAP()) * quality;
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-  paint(canvas, w, h, c => drawVideo(c, w, h));
-  ema = ema * .9 + (performance.now() - t0) * .1;           // 느리면 해상도를 낮추고, 여유 있으면 되돌린다
-  if (ema > 26 && quality > .5) { quality = Math.max(.5, quality * .85); ema = 14; }
-  else if (ema < 9 && quality < 1) { quality = Math.min(1, quality * 1.1); ema = 12; }
-  raf = requestAnimationFrame(render);
+  if (glr) { if (video.readyState >= 2 && video.videoWidth) glr.draw(video, w, h, cropFor(w, h), state.facing === 'user', fxFor(Math.max(1, Math.round(dpr * .75)))); }
+  else paint(canvas, w, h, c => drawVideo(c, w, h));
+  schedule();
 }
-const resume = () => { cancelAnimationFrame(raf); if (running && !galleryOpen && !previewOpen && !document.hidden) render(); };
+const resume = () => { cancelLoop(); perf.t0 = performance.now(); perf.frames = 0; perf.skipUntil = perf.t0 + 2000; if (running && !galleryOpen && !previewOpen && !document.hidden) render(); };
 
 /* ---------- 카메라 ---------- */
 const setStatus = s => { $('status').textContent = s; };
@@ -124,15 +198,39 @@ function cameraError(e) {
     default: return '카메라를 시작하지 못했어요' + (e && e.name ? ' (' + e.name + ')' : '') + '.';
   }
 }
+// 4:3 입력을 우선 요청한다 (세로 뷰파인더에 16:9보다 잘림이 적다). ideal이므로 기기가 가장 가까운 지원 해상도를 준다.
+const TIERS = [[4032, 3024], [2560, 1920], [1920, 1440], [1280, 960]];
+const tierOf = { environment: 1, user: 2 };
+const URLRES = (/[?&]res=(\d+)x(\d+)/.exec(location.search) || []).slice(1).map(Number);   // 디버그: ?res=4032x3024
+const cam = { req: null, got: null, settings: null, tier: 0 };
+async function openStream() {
+  const attempts = []; if (URLRES.length === 2 && !cam.urlTried) attempts.push(URLRES);
+  for (let t = tierOf[state.facing]; t < TIERS.length; t++) attempts.push(TIERS[t]); attempts.push(null);
+  let lastErr;
+  for (const r of attempts) {
+    const v = { facingMode: { ideal: state.facing } }; if (r) { v.width = { ideal: r[0] }; v.height = { ideal: r[1] }; }
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: v });
+      cam.req = r; const i = TIERS.findIndex(x => r && x[0] === r[0]); if (i >= 0) tierOf[state.facing] = i; return s;
+    } catch (e) { lastErr = e; if (['NotAllowedError', 'SecurityError', 'NotFoundError', 'NotReadableError'].includes(e.name)) throw e; }
+  }
+  throw lastErr;
+}
+function downgradeTier() {
+  if (!running || tierOf[state.facing] >= TIERS.length - 1) return;
+  tierOf[state.facing]++; cam.urlTried = true; flashStatus('기기 성능에 맞춰 카메라 해상도를 낮췄어요.'); startCamera();
+}
 async function startCamera() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     $('emptyHint').textContent = '카메라는 HTTPS 주소(또는 localhost)에서만 쓸 수 있어요. Safari/Chrome으로 열어 주세요.'; return;
   }
   stopCamera(); $('start').disabled = true; $('emptyHint').textContent = '카메라 연결 중...';
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: state.facing }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+    stream = await openStream(); cam.urlTried = true;
     video.srcObject = stream; await video.play();
     track = stream.getVideoTracks()[0];
+    try { cam.settings = track.getSettings ? track.getSettings() : null; } catch (e) { cam.settings = null; }   // 요청(req)과 실제(got)를 구분해 기록
+    cam.got = [video.videoWidth, video.videoHeight];
     let caps = {}; try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (e) {}
     torchOK = !!caps.torch;
     running = true; $('empty').hidden = true; $('shutter').disabled = false; $('emptyHint').textContent = '';
@@ -142,7 +240,7 @@ async function startCamera() {
   } finally { $('start').disabled = false; }
 }
 function stopCamera() {
-  running = false; cancelAnimationFrame(raf);
+  running = false; cancelLoop();
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
   video.srcObject = null; $('shutter').disabled = true;
 }
@@ -209,12 +307,12 @@ function toggleTray(which) {
 function setGallery(open) {
   galleryOpen = open;
   const g = $('gallery'); g.classList.toggle('open', open); g.setAttribute('aria-hidden', !open);
-  if (open) { cancelAnimationFrame(raf); g.scrollTop = 0; renderHero(); } else { resume(); centerChip(state.selected, false); }
+  if (open) { cancelLoop(); g.scrollTop = 0; renderHero(); } else { resume(); centerChip(state.selected, false); }
 }
 function setPreview(open) {
   previewOpen = open;
   const p = $('pv'); p.classList.toggle('show', open); p.setAttribute('aria-hidden', !open);
-  if (open) cancelAnimationFrame(raf); else resume();
+  if (open) cancelLoop(); else resume();
 }
 
 /* ---------- 촬영 ---------- */
@@ -227,7 +325,7 @@ function makeNoise() {
 function addGrain(c, w, h, amt, noise) {
   const n = noise || makeNoise(), g = c.getContext('2d');
   g.save(); g.globalAlpha = amt; g.globalCompositeOperation = 'overlay';
-  const s = Math.max(1, Math.round(w / 520));
+  const s = Math.max(1, Math.round(w / 1100));
   for (let y = 0; y < h; y += 160 * s) for (let x = 0; x < w; x += 160 * s) g.drawImage(n, x, y, 160 * s, 160 * s);
   g.restore();
 }
@@ -255,20 +353,25 @@ async function shoot() {
     const ar = canvas.clientWidth / canvas.clientHeight, vw = video.videoWidth, vh = video.videoHeight;
     let cw, ch;
     if (vw / vh > ar) { ch = vh / state.zoom; cw = ch * ar; } else { cw = vw / state.zoom; ch = cw / ar; }
-    const k = Math.min(1, 2400 / Math.max(cw, ch));
+    const lim = glr ? 4096 : 3000, k = Math.min(1, lim / Math.max(cw, ch));
     const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(cw * k)); out.height = Math.max(1, Math.round(ch * k));
     const f = FILTERS[state.selected];
-    paint(out, out.width, out.height, c => drawVideo(c, out.width, out.height));
+    if (glr && !capGL) { capCv = document.createElement('canvas'); capGL = makeGLR(capCv); }
+    const usedGL = !!capGL && Math.max(out.width, out.height) <= capGL.max;
+    if (usedGL) {
+      capGL.draw(video, out.width, out.height, cropFor(out.width, out.height), state.facing === 'user', fxFor(Math.max(1, Math.round(out.width / 1100))));
+      out.getContext('2d', { alpha: false }).drawImage(capCv, 0, 0);
+    } else paint(out, out.width, out.height, c => drawVideo(c, out.width, out.height));
     await cleanup(); cleanup = async () => {};
     $('blink').classList.remove('go'); void $('blink').offsetWidth; $('blink').classList.add('go');
-    if (state.grain) addGrain(out, out.width, out.height, f.grain);
-    vignette(out, out.width, out.height, f.vig);
+    if (!usedGL) { if (state.grain) addGrain(out, out.width, out.height, f.grain); vignette(out, out.width, out.height, f.vig); }
     if (state.date) stamp(out, out.width, out.height);
     setStatus('사진 처리 중...');
-    const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', .93));
+    const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', .95));
     if (!blob) { flashStatus('사진 생성에 실패했어요.'); return; }
+    dbg.photo = [out.width, out.height, capGL && Math.max(out.width, out.height) <= capGL.max ? 'WebGL' : (CSS_FILTER ? 'Canvas filter' : '픽셀 대체'), blob.size];
     lastBlob = blob; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = URL.createObjectURL(blob);
-    lastMeta = `${f.name.toUpperCase()} · ${state.strength}% · ${new Date().toLocaleString('ko-KR')}`;
+    lastMeta = `${f.name.toUpperCase()} · ${state.strength}% · ${out.width}×${out.height} · ${new Date().toLocaleString('ko-KR')}`;
     $('shot').src = lastUrl; $('pvMeta').textContent = lastMeta;
     setThumb(lastUrl); saveThumb(out); setStatus('');
     setPreview(true);
@@ -301,6 +404,20 @@ async function sharePhoto() {
     if (canShareFile(makeFile())) await shareFile('FILM LAB');
     else { $('pvNote').textContent = '이 브라우저는 공유를 지원하지 않아 파일로 저장해요.'; download(); }
   } catch (e) { if (e.name !== 'AbortError') $('pvNote').textContent = '공유에 실패했어요. ‘사진 저장’을 이용해 주세요.'; }
+}
+
+/* ---------- 화질 진단 (?debug=1 일 때만 표시) ---------- */
+const dbg = { photo: null };
+function updateDebug() {
+  const st = cam.settings || {}, fmt = a => a ? a[0] + '×' + a[1] : '-';
+  $('debug').textContent = [
+    `입력(요청) ${fmt(cam.req)} · 입력(실제) ${fmt(cam.got)}${st.width ? ' · settings ' + st.width + '×' + st.height : ''}${st.frameRate ? ' @' + Math.round(st.frameRate) : ''}`,
+    `미리보기 캔버스 ${canvas.width}×${canvas.height} (CSS ${canvas.clientWidth}×${canvas.clientHeight}, DPR ${(devicePixelRatio || 1).toFixed(1)}, q ${quality.toFixed(2)})`,
+    `저장 사진 ${dbg.photo ? dbg.photo[0] + '×' + dbg.photo[1] + ' · ' + dbg.photo[2] + ' · ' + Math.round(dbg.photo[3] / 1024) + 'KB' : '-'}`,
+    `FPS ${perf.fps.toFixed(0)} · 줌 ${state.zoom}x`,
+    `필터 처리: 미리보기 ${glr ? 'WebGL(GPU)' : CSS_FILTER ? 'Canvas filter' : '픽셀 대체(JS)'} / 촬영 ${capGL ? 'WebGL' : (CSS_FILTER ? 'Canvas filter' : '픽셀 대체(JS)')}`,
+    `ImageCapture ${typeof ImageCapture !== 'undefined' ? '있음(미사용)' : '없음'} · iOS ${IS_IOS}`
+  ].join('\n');
 }
 
 /* ---------- 초기화 ---------- */
@@ -345,9 +462,10 @@ function init() {
   $('thumb').onclick = () => { if (lastBlob) setPreview(true); else flashStatus('방금 찍은 사진부터 다시 볼 수 있어요.'); };
   $('retake').onclick = () => { setPreview(false); $('pvNote').textContent = '사진은 이 기기에서만 처리되며 서버로 업로드되지 않아요.'; };
   $('save').onclick = savePhoto; $('share').onclick = sharePhoto;
-  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelAnimationFrame(raf); else { resume(); if (swReg) swReg.update().catch(() => {}); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelLoop(); else { resume(); if (swReg) swReg.update().catch(() => {}); } });
   window.addEventListener('pagehide', stopCamera);
   window.addEventListener('resize', () => { if (galleryOpen === false) centerChip(state.selected, false); });
+  if (DBG) { $('debug').hidden = false; setInterval(updateDebug, 500); }
   initSW();
 }
 let swReg = null;
