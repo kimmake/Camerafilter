@@ -100,7 +100,13 @@ function drawVideo(c, w, h) {
 
 /* ---------- WebGL 렌더러: 같은 필터 행렬을 GPU에서 처리 (iOS에서도 전 해상도·실시간) ---------- */
 const VS = 'attribute vec2 p;uniform vec4 crop;uniform float mir;varying vec2 t;void main(){vec2 u=p*.5+.5;u.y=1.-u.y;if(mir>.5)u.x=1.-u.x;t=crop.xy+u*crop.zw;gl_Position=vec4(p,0.,1.);}';
-const FS = 'precision mediump float;uniform sampler2D tx;uniform mat3 m;uniform vec3 off;uniform vec4 fade;varying vec2 t;void main(){vec3 c=m*texture2D(tx,t).rgb+off;c=clamp(c,0.,1.);c=mix(c,fade.rgb,fade.a);gl_FragColor=vec4(c,1.);}';
+// 필터 행렬 → 페이드 → 그레인(overlay) → 비네팅 순서. 촬영본과 미리보기가 같은 셰이더를 쓴다.
+const FS = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n' +
+  'uniform sampler2D tx;uniform sampler2D nz;uniform mat3 m;uniform vec3 off;uniform vec4 fade;uniform vec2 res;uniform vec4 gr;uniform float vig;varying vec2 t;' +
+  'void main(){vec3 c=m*texture2D(tx,t).rgb+off;c=clamp(c,0.,1.);c=mix(c,fade.rgb,fade.a);' +
+  'if(gr.z>0.){float n=texture2D(nz,fract(gl_FragCoord.xy/(160.*gr.w)+gr.xy)).r;vec3 o=mix(2.*c*n,1.-2.*(1.-c)*(1.-n),step(.5,c));c=mix(c,o,gr.z);}' +
+  'float d=length(gl_FragCoord.xy-res*.5)/(length(res)*.5);c*=1.-vig*clamp((d-.55)/.45,0.,1.);gl_FragColor=vec4(c,1.);}';
+const NOISE = (() => { try { return makeNoise(); } catch (e) { return null; } })();
 const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
 function makeGLR(cv) {
   if (/[?&]nogl\b/.test(location.search)) return null;
@@ -113,26 +119,32 @@ function makeGLR(cv) {
     gl.useProgram(pr);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const a = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
-    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+    const setup = (unit, filter) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); };
+    setup(1, gl.NEAREST); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, NOISE);   // 그레인 텍스처(유닛 1)
+    setup(0, gl.LINEAR);
     const U = n => gl.getUniformLocation(pr, n);
-    const u = { crop: U('crop'), mir: U('mir'), m: U('m'), off: U('off'), fade: U('fade') };
+    const u = { crop: U('crop'), mir: U('mir'), m: U('m'), off: U('off'), fade: U('fade'), res: U('res'), gr: U('gr'), vig: U('vig') };
+    gl.uniform1i(U('tx'), 0); gl.uniform1i(U('nz'), 1);
     return {
       max: Math.min(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096, gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096),
-      draw(src, w, h, crop, mirror) {
+      draw(src, w, h, crop, mirror, fx) {
         if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-        gl.viewport(0, 0, w, h);
+        gl.viewport(0, 0, w, h); gl.activeTexture(gl.TEXTURE0);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src);
         const m = filterMatrix(filterParams()), f = FILTERS[state.selected].fade, col = hexRGB(f[0]);
         gl.uniformMatrix3fv(u.m, false, [m[0][0], m[1][0], m[2][0], m[0][1], m[1][1], m[2][1], m[0][2], m[1][2], m[2][2]]);
         gl.uniform3f(u.off, m[0][3], m[1][3], m[2][3]);
         gl.uniform4f(u.fade, col[0], col[1], col[2], f[1] * state.strength / 100);
         gl.uniform4f(u.crop, crop[0], crop[1], crop[2], crop[3]); gl.uniform1f(u.mir, mirror ? 1 : 0);
+        gl.uniform2f(u.res, w, h); gl.uniform1f(u.vig, fx.vig);
+        gl.uniform4f(u.gr, Math.random(), Math.random(), fx.grain, fx.gs);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
     };
   } catch (e) { return null; }
 }
+const fxFor = (grainScale) => { const f = FILTERS[state.selected]; return { grain: state.grain ? f.grain : 0, vig: f.vig, gs: grainScale }; };
 // 뷰파인더 비율(w×h)에 맞춰 영상을 cover + 디지털 줌으로 자르는 정규화 좌표
 function cropFor(w, h) {
   const vw = video.videoWidth, vh = video.videoHeight, scale = Math.max(w / vw, h / vh) * state.zoom;
@@ -140,19 +152,25 @@ function cropFor(w, h) {
 }
 let glr = makeGLR(canvas);
 if (!glr) { const n = canvas.cloneNode(false); canvas.replaceWith(n); canvas = n; }   // 실패한 WebGL 컨텍스트가 붙은 캔버스는 교체
+else $('viewfinder').classList.add('gl');        // 그레인·비네팅은 셰이더가 그린다 (CSS blend 레이어 제거)
 if (!glr) quality = .6;               // 픽셀 대체 경로는 낮게 시작해서 fps가 허용하면 올린다
 let capGL = null, capCv = null;
 
+// 새 비디오 프레임이 올 때만 그린다 (카메라 30fps일 때 불필요한 60fps 업로드/렌더를 절반으로 줄임). 미지원이면 rAF.
+const useVFC = () => !!(glr && video.requestVideoFrameCallback);
+function schedule() { if (useVFC()) raf = video.requestVideoFrameCallback(render); else raf = requestAnimationFrame(render); }
+function cancelLoop() { try { if (video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(raf); } catch (e) {} cancelAnimationFrame(raf); }
 const DBG = /[?&]debug\b/.test(location.search);
 const perf = { fps: 0, frames: 0, t0: 0, skipUntil: 0, lowStreak: 0 };
 // 미리보기 해상도 = (CSS 크기 × DPR × quality). GPU 경로는 DPR 그대로, 픽셀 대체 경로는 낮게 시작해 fps가 허용하면 올린다.
-const QMIN = () => glr ? .5 : .35, DPRCAP = () => glr ? 3 : 2;
+const QMIN = () => glr ? .5 : .35, DPRCAP = () => glr ? 2 : 2;
+const FPS_LOW = () => useVFC() ? 17 : 22, FPS_HIGH = () => useVFC() ? 26 : 50;
 function adaptQuality() {            // 1초마다: 느리면 해상도↓, 계속 느리면 카메라 입력 해상도↓, 여유 있으면 해상도↑
   if (performance.now() < perf.skipUntil) return;
-  if (perf.fps < 22) {
+  if (perf.fps < FPS_LOW()) {
     if (quality > QMIN() + .01) { quality = Math.max(QMIN(), quality * .8); perf.lowStreak = 0; }
     else if (++perf.lowStreak >= 3) { perf.lowStreak = 0; downgradeTier(); }
-  } else { perf.lowStreak = 0; if (perf.fps > 50 && quality < 1) quality = Math.min(1, quality * 1.12); }
+  } else { perf.lowStreak = 0; if (perf.fps > FPS_HIGH() && quality < 1) quality = Math.min(1, quality * 1.12); }
 }
 function render(now) {
   if (!running || galleryOpen || previewOpen) return;
@@ -162,11 +180,11 @@ function render(now) {
   const dpr = Math.min(devicePixelRatio || 1, DPRCAP()) * quality;
   const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-  if (glr) { if (video.readyState >= 2 && video.videoWidth) glr.draw(video, w, h, cropFor(w, h), state.facing === 'user'); }
+  if (glr) { if (video.readyState >= 2 && video.videoWidth) glr.draw(video, w, h, cropFor(w, h), state.facing === 'user', fxFor(Math.max(1, Math.round(dpr * .75)))); }
   else paint(canvas, w, h, c => drawVideo(c, w, h));
-  raf = requestAnimationFrame(render);
+  schedule();
 }
-const resume = () => { cancelAnimationFrame(raf); perf.t0 = performance.now(); perf.frames = 0; perf.skipUntil = perf.t0 + 2000; if (running && !galleryOpen && !previewOpen && !document.hidden) render(); };
+const resume = () => { cancelLoop(); perf.t0 = performance.now(); perf.frames = 0; perf.skipUntil = perf.t0 + 2000; if (running && !galleryOpen && !previewOpen && !document.hidden) render(); };
 
 /* ---------- 카메라 ---------- */
 const setStatus = s => { $('status').textContent = s; };
@@ -222,7 +240,7 @@ async function startCamera() {
   } finally { $('start').disabled = false; }
 }
 function stopCamera() {
-  running = false; cancelAnimationFrame(raf);
+  running = false; cancelLoop();
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; track = null; }
   video.srcObject = null; $('shutter').disabled = true;
 }
@@ -289,12 +307,12 @@ function toggleTray(which) {
 function setGallery(open) {
   galleryOpen = open;
   const g = $('gallery'); g.classList.toggle('open', open); g.setAttribute('aria-hidden', !open);
-  if (open) { cancelAnimationFrame(raf); g.scrollTop = 0; renderHero(); } else { resume(); centerChip(state.selected, false); }
+  if (open) { cancelLoop(); g.scrollTop = 0; renderHero(); } else { resume(); centerChip(state.selected, false); }
 }
 function setPreview(open) {
   previewOpen = open;
   const p = $('pv'); p.classList.toggle('show', open); p.setAttribute('aria-hidden', !open);
-  if (open) cancelAnimationFrame(raf); else resume();
+  if (open) cancelLoop(); else resume();
 }
 
 /* ---------- 촬영 ---------- */
@@ -339,14 +357,14 @@ async function shoot() {
     const out = document.createElement('canvas'); out.width = Math.max(1, Math.round(cw * k)); out.height = Math.max(1, Math.round(ch * k));
     const f = FILTERS[state.selected];
     if (glr && !capGL) { capCv = document.createElement('canvas'); capGL = makeGLR(capCv); }
-    if (capGL && Math.max(out.width, out.height) <= capGL.max) {
-      capGL.draw(video, out.width, out.height, cropFor(out.width, out.height), state.facing === 'user');
+    const usedGL = !!capGL && Math.max(out.width, out.height) <= capGL.max;
+    if (usedGL) {
+      capGL.draw(video, out.width, out.height, cropFor(out.width, out.height), state.facing === 'user', fxFor(Math.max(1, Math.round(out.width / 1100))));
       out.getContext('2d', { alpha: false }).drawImage(capCv, 0, 0);
     } else paint(out, out.width, out.height, c => drawVideo(c, out.width, out.height));
     await cleanup(); cleanup = async () => {};
     $('blink').classList.remove('go'); void $('blink').offsetWidth; $('blink').classList.add('go');
-    if (state.grain) addGrain(out, out.width, out.height, f.grain);
-    vignette(out, out.width, out.height, f.vig);
+    if (!usedGL) { if (state.grain) addGrain(out, out.width, out.height, f.grain); vignette(out, out.width, out.height, f.vig); }
     if (state.date) stamp(out, out.width, out.height);
     setStatus('사진 처리 중...');
     const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', .95));
@@ -444,7 +462,7 @@ function init() {
   $('thumb').onclick = () => { if (lastBlob) setPreview(true); else flashStatus('방금 찍은 사진부터 다시 볼 수 있어요.'); };
   $('retake').onclick = () => { setPreview(false); $('pvNote').textContent = '사진은 이 기기에서만 처리되며 서버로 업로드되지 않아요.'; };
   $('save').onclick = savePhoto; $('share').onclick = sharePhoto;
-  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelAnimationFrame(raf); else { resume(); if (swReg) swReg.update().catch(() => {}); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancelLoop(); else { resume(); if (swReg) swReg.update().catch(() => {}); } });
   window.addEventListener('pagehide', stopCamera);
   window.addEventListener('resize', () => { if (galleryOpen === false) centerChip(state.selected, false); });
   if (DBG) { $('debug').hidden = false; setInterval(updateDebug, 500); }

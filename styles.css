@@ -152,3 +152,5 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
   .pv-photo{min-height:140px}
 }
 .debug{position:absolute;left:6px;right:6px;top:44px;margin:0;padding:6px 8px;background:#000c;border:1px solid var(--border);color:#9fe3b0;font:10px/1.5 var(--mono);white-space:pre-wrap;pointer-events:none;z-index:5}
+
+.viewfinder.gl .grain,.viewfinder.gl .vignette{display:none}
