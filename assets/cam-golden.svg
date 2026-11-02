@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130" role="img" aria-label="Golden Hour camera"><ellipse cx="100" cy="118" rx="78" ry="6" fill="#000" opacity=".45"/>
+<rect x="22" y="38" width="156" height="76" rx="16" fill="#c7a15b"/>
+<rect x="22" y="38" width="156" height="22" rx="16" fill="#dcbc7c"/><rect x="22" y="56" width="156" height="3" fill="#a98341"/>
+<rect x="128" y="48" width="36" height="20" rx="3" fill="#f2e6c0" stroke="#8c6e35"/>
+<rect x="104" y="48" width="16" height="12" rx="2" fill="#1c1a14"/><circle cx="52" cy="48" r="5" fill="#f0e4c1" stroke="#8c6e35"/>
+<rect x="132" y="92" width="30" height="8" rx="2" fill="#a98341"/>
+<defs><radialGradient id="gb" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#6f8aa0"/><stop offset=".35" stop-color="#2a2a3a"/><stop offset="1" stop-color="#05080b"/></radialGradient></defs>
+<circle cx="76" cy="82" r="27" fill="#2a2216"/>
+<circle cx="76" cy="82" r="23" fill="none" stroke="#e7d29c" stroke-width="3"/>
+<circle cx="76" cy="82" r="16.7" fill="url(#gb)" stroke="#000" stroke-width="1.5"/>
+<circle cx="76" cy="82" r="8.1" fill="none" stroke="#9fb4c6" stroke-width=".8" opacity=".5"/>
+<circle cx="70.1" cy="75.5" r="2.7" fill="#fff" opacity=".7"/></svg>

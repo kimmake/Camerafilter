@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130" role="img" aria-label="Faded Memory camera"><ellipse cx="100" cy="118" rx="78" ry="6" fill="#000" opacity=".45"/>
+<polygon points="76,36 88,18 112,18 124,36" fill="#cfc8b2" stroke="#9b947e"/>
+<rect x="18" y="34" width="164" height="22" rx="5" fill="#ddd6c0"/><rect x="18" y="52" width="164" height="60" rx="6" fill="#7e8b80"/>
+<rect x="18" y="52" width="164" height="6" fill="#6b7a70"/>
+<circle cx="38" cy="30" r="5" fill="#b8b19b"/><circle cx="162" cy="30" r="5" fill="#b8b19b"/><rect x="146" y="22" width="12" height="7" rx="2" fill="#a59e88"/>
+<rect x="26" y="62" width="22" height="9" rx="2" fill="#e8e1cc"/>
+<defs><radialGradient id="gc" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#6f8aa0"/><stop offset=".35" stop-color="#2a3030"/><stop offset="1" stop-color="#05080b"/></radialGradient></defs>
+<circle cx="100" cy="80" r="34" fill="#2b2d2a"/>
+<circle cx="100" cy="80" r="30" fill="none" stroke="#d8d1ba" stroke-width="3"/>
+<circle cx="100" cy="80" r="21.1" fill="url(#gc)" stroke="#000" stroke-width="1.5"/>
+<circle cx="100" cy="80" r="10.2" fill="none" stroke="#9fb4c6" stroke-width=".8" opacity=".5"/>
+<circle cx="92.5" cy="71.8" r="3.4" fill="#fff" opacity=".7"/></svg>
