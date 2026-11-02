@@ -18,7 +18,7 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
 .viewfinder canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .vignette{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 90px rgb(0 0 0/var(--vig))}
 .grain{position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:var(--grain);mix-blend-mode:overlay}
-.grain::before{content:'';position:absolute;inset:-60px;background-image:var(--noise);background-size:160px 160px;animation:grain .5s steps(1) infinite}
+.grain::before{content:'';position:absolute;inset:-60px;background-image:var(--noise);background-size:100px 100px;animation:grain .5s steps(1) infinite}
 .grain.off{display:none}
 @keyframes grain{0%{transform:translate(0,0)}25%{transform:translate(-37px,21px)}50%{transform:translate(29px,-44px)}75%{transform:translate(-18px,-30px)}}
 @media (prefers-reduced-motion:reduce){.grain::before{animation:none}*{transition-duration:.01s!important;animation-duration:.01s!important}}
@@ -151,3 +151,4 @@ svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-l
   .gal-bar{max-width:none;padding-top:10px}
   .pv-photo{min-height:140px}
 }
+.debug{position:absolute;left:6px;right:6px;top:44px;margin:0;padding:6px 8px;background:#000c;border:1px solid var(--border);color:#9fe3b0;font:10px/1.5 var(--mono);white-space:pre-wrap;pointer-events:none;z-index:5}
