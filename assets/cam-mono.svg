@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130" role="img" aria-label="Mono 77 camera"><ellipse cx="100" cy="118" rx="78" ry="6" fill="#000" opacity=".45"/>
+<rect x="60" y="8" width="80" height="108" rx="8" fill="#161616" stroke="#4a4a4a"/>
+<rect x="68" y="14" width="64" height="8" rx="2" fill="#e9e9e5"/><rect x="48" y="40" width="10" height="26" rx="3" fill="#cfcfcb"/>
+<rect x="142" y="52" width="9" height="30" rx="3" fill="#cfcfcb"/>
+<rect x="66" y="98" width="68" height="10" rx="3" fill="#e9e9e5"/>
+<defs><radialGradient id="ge" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#6f8aa0"/><stop offset=".35" stop-color="#222"/><stop offset="1" stop-color="#05080b"/></radialGradient></defs>
+<circle cx="100" cy="42" r="20" fill="#0a0a0a"/>
+<circle cx="100" cy="42" r="16" fill="none" stroke="#efefeb" stroke-width="3"/>
+<circle cx="100" cy="42" r="12.4" fill="url(#ge)" stroke="#000" stroke-width="1.5"/>
+<circle cx="100" cy="42" r="6.0" fill="none" stroke="#9fb4c6" stroke-width=".8" opacity=".5"/>
+<circle cx="95.6" cy="37.2" r="2.0" fill="#fff" opacity=".7"/><defs><radialGradient id="gf" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#6f8aa0"/><stop offset=".35" stop-color="#222"/><stop offset="1" stop-color="#05080b"/></radialGradient></defs>
+<circle cx="100" cy="80" r="22" fill="#0a0a0a"/>
+<circle cx="100" cy="80" r="18" fill="none" stroke="#efefeb" stroke-width="3"/>
+<circle cx="100" cy="80" r="13.6" fill="url(#gf)" stroke="#000" stroke-width="1.5"/>
+<circle cx="100" cy="80" r="6.6" fill="none" stroke="#9fb4c6" stroke-width=".8" opacity=".5"/>
+<circle cx="95.2" cy="74.7" r="2.2" fill="#fff" opacity=".7"/></svg>

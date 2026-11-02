@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130" role="img" aria-label="Classic 95 camera"><ellipse cx="100" cy="118" rx="78" ry="6" fill="#000" opacity=".45"/>
+<rect x="14" y="32" width="172" height="78" rx="16" fill="#cdc5af"/>
+<rect x="14" y="32" width="172" height="28" rx="14" fill="#bdb5a0"/><rect x="14" y="52" width="172" height="3" fill="#a79f8a"/>
+<rect x="38" y="38" width="112" height="14" rx="5" fill="#1d1d1b"/>
+<circle cx="52" cy="45" r="4" fill="#6d6d68"/><rect x="62" y="40" width="24" height="10" rx="3" fill="#d8d6cd"/><rect x="90" y="40" width="22" height="10" rx="3" fill="#d8d6cd"/><circle cx="122" cy="45" r="4.5" fill="#85857f"/>
+<rect x="154" y="38" width="22" height="14" rx="2" fill="#f2f0e8" stroke="#8d8573"/>
+<rect x="150" y="20" width="14" height="10" rx="3" fill="#a9a18d"/><rect x="154" y="62" width="14" height="6" rx="1" fill="#b3302a"/>
+<circle cx="88" cy="82" r="36" fill="#a8a08b"/><circle cx="88" cy="82" r="31" fill="#171715"/>
+<circle cx="88" cy="82" r="26" fill="none" stroke="#c9c1ab" stroke-width="4"/>
+<defs><radialGradient id="ga" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#4f9a8a"/><stop offset=".4" stop-color="#1d3d3a"/><stop offset="1" stop-color="#050807"/></radialGradient></defs>
+<circle cx="88" cy="82" r="15" fill="url(#ga)" stroke="#000" stroke-width="1.5"/><circle cx="83" cy="77" r="3" fill="#fff" opacity=".6"/></svg>
